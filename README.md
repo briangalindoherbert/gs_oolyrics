@@ -1,17 +1,17 @@
 ## musiclyrics_nlp
 apply gensim vector training and LDA topic modeling to corpora of lyrics from selected musical artists
 
-1. functions to interface with lyricgenius api to GET lyrics from Internet for an artist
-2. parsing, scrubbing, and tokenization functions
-3. uses gensim word2vec and Similarity for training of corpora to generate KeyedVector model
-4. uses gensim.models.Ldamodel and gensim.corpora.Dictionary for LDA topic modeling
+1. functions to interface with lyricgenius api to GET lyrics from Internet for an artist, this builds a corpus of lyrics - each lyric file is named with the prefix of the genre (ex. 'rap', 'rock', 'country', 'pop') the artist name with spaces stripped out, and extension ".lyr", as in "pop_Maroon5.lyr".
+2. In addition to building a corpus of lyrics files as described above, I've added functions to create a lyrics registry to support creating TaggedDocuments, in parralel to the lyric corpus building, it creates a json file for each genre, with list of tag: song name pairs for each artist's tracks in the corpus.  This index makes it easy to pull a song and its lyrics when doing topic modeling like looking for the most similar tracks to a line of input text.
+3. cleaning, formatting and tokenization:  I have found it is best to try to leave corpus text in close to its original state, and perform cleaning, parsing, and formatting as a 'just-in-time' process for the nlp task at hand.  Any wrangling done to text files must not harm the ability to perform any downstream nlp tasks- what is needed for word embedding may be different from what is needed for sentiment analysis, so better to do minimal scrubbing to corpus files and simply apply filters inline with nlp tasks as they are called.  In gs_Gensim.py, I have a function called line_cleaning that I call from the lyrics objects I use as generators-iterators to stream lyrics, line cleaning takes care of most of my cleaning-formatting-tokenization needs except for lemmatization, which the object calls right after line_cleaning if it is needed.
+4. Above is a long winded explanation of my design approach to text processing for nlp, but it is why the only modification I apply to lyrics files after I write them is to standardize an 'end-of'track' marker between songs and to strip out blank lines.  The method filter_for_end_of_track gets called right after get_lyrics to do that processing.
+5. uses gensim word2vec and Similarity for training of corpora to generate KeyedVector model.  Creating word embeddings for a genre or for the entire corpora of music lyrics allows interesting findings with similarities and differences of language use by artists, in genres, or with music in general.
+6. used gensim doc2vec to do unsupervised training, defining each song in the applicable genre as a TaggedDocument.  This allows some cool stuff with looking at similarities and characteristics of different artists, genres, and music tracks.  
+7. uses gensim.models.Ldamodel and gensim.corpora.Dictionary for LDA topic modeling
 
-I initially built corpora of lyrics from complete 'official' album releases of The Grateful Dead and first three full-length releases from Kendrick Lamar.   As of this edit (Nov 14) I am working on full lyric corpus for a couple other artists. My target is to have lyrics from at least two artists per genre, and at least 3 genres.
+I initially built corpora of lyrics from complete 'official' album releases of The Grateful Dead and first three full-length releases from Kendrick Lamar, I planned to do some modeling to contrast language use and meaning between 'old school' rock and newer 'rap'.  But, I quickly saw I needed to build out a much larger corpus within each genre and to broaden my knowledge of and application of 'paragraph' or 'document' level vector models.  
+I kept expanding and enhancing the libraries I integrated and the methods and classes I wrote to manage it all.  As of this writing (Dec 18, 2021) I now have built pieces for vocabulary, BoW, word2vec, and doc2vec modeling, and my corpus has the lyrical body of work of 130 artists across 7 musical genre.
 
-In progress lyric corpora:
-A. hip-hop:  have Kendrick Lamar, in process of adding Wu-Tang Clan and Outkast
-B. 'hippie' rock- have Grateful Dead, working on adding Allman Brothers
-C. alternative rock- building corpus from Nirvana, Pearl Jam, Green Day and Linkin Park
+With many big changes to the purpose and scope of this app, I've had to do a lot of refactoring but I feel there are many pieces now that have a good design and are stable.  I think there is tons of potential with nlp applied to music lyrics, and I've just scratched the surface with this.  I hope you enjoy music like I do and that you find something in this app that is useful or interesting.
+Brian
 
-As of Nov 14, 2021 this 'app' is a rough draft, I have manually run various pieces and working on script cleanup 
-and getting it all to hang together, by Thanksgiving weekend I will upload a seriously improved version!
