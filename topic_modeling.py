@@ -18,69 +18,38 @@ datasets (lack of correlation could point to problems with my topic dataset buil
 
 """
 
-import os
 import pandas as pd
-import gs_utils as gsutil
-from gs_datadict import OUTDIR, MODELDIR, GS_STOP, STOP_LYRICS
-from string import punctuation
+from gs_datadict import OUTDIR, GS_CONTRACT, CORESTOPS
 from gensim.corpora import Dictionary
-from gensim.models import LdaModel
-from nltk.corpus import stopwords
-from nltk.stem.wordnet import WordNetLemmatizer
+from gensim.models import LdaModel, LdaMulticore
+from gensim.corpora import MmCorpus
 from gensim.models.ldamulticore import LdaMulticore
-from gensim.models import CoherenceModel
 from gensim.test.utils import datapath
 
+# from nltk.sentiment.vader import SentimentIntensityAnalyzer
+
+# vsi = SentimentIntensityAnalyzer()
 pd.options.plotting.backend = "plotly"
 
-def prep_for_lda(twl: list):
-    """
-    preprocess cleaning for LDA topic modeling
-    string package punctuation includes !"#$%&'()*+,-./:;<=>?@[\]^_`{|}~
-    :param twl: list of dict of tweets
-    :return: list of str with scrubbed tweet text
-    """
-    stop = set(stopwords.words('english'))
-    exclude = set(punctuation)
-    lemma = WordNetLemmatizer()
-
-    def clean(doc):
-        """
-        inner Fx to lowercase tweet, strip punctuation and remove stops
-        :param doc: list of tweet text strings
-        :return:
-        """
-        stop_free = " ".join([i for i in doc.lower().split() if i not in stop])
-        punc_free = "".join(ch for ch in stop_free if ch not in exclude)
-        normalized = " ".join(lemma.lemmatize(word) for word in punc_free.split())
-        return normalized
-
-    doc_clean: list = []
-    for tw in twl:
-        if isinstance(tw, dict):
-            doc_clean.append(clean(tw['text']).split())
-        elif isinstance(tw, str):
-            doc_clean.append(clean(tw).split())
-        else:
-            print("ERROR- prep_for_lda expects list of dict or list of str for Tweets")
-            return None
-
-    return doc_clean
-
-def gensim_doc_terms(docs: list):
+def get_gdict_and_doc2bow(docs: list):
     """
     prepare gensim terms dictionary and document-terms matrix as intermediate step in
-    topic-modeling of Tweet dataset.
-    :param docs: list of tweets
+    topic-modeling.
+    my prep_lda was redundant with Fx's in gs_utils to word-tokenize a corpus for lda
+    :param docs: should send list of list of words (word tokenized corpus)
     :return: list and gsm.Dictionary with term frequencies in Tweets and corpus
     """
     doc_dict: Dictionary = Dictionary(docs)
+
+    # Filter out words that occur less than 2 documents, or more than 30% of the documents.
+    doc_dict.filter_extremes(no_below=1, no_above=0.4)
+
     doc_term_matrix: list = [doc_dict.doc2bow(doc) for doc in docs]
 
     return doc_term_matrix, doc_dict
 
-def run_lda_model(doc_term, term_dict, topics: int = 5, chunk: int = 3000,
-                  train_iter: int = 50, word_topics=False):
+def run_lda_model(doc_term, term_dict, topics: int = 50, chunk: int = 3000, eval: int=5,
+                  train_iter: int = 100, word_topics=False):
     """
     run training cycles with doc-term matrix and docterms dictionary to create a
     gensim LdaModel for topic modeling
@@ -96,10 +65,9 @@ def run_lda_model(doc_term, term_dict, topics: int = 5, chunk: int = 3000,
     :return:
     """
     Lda = LdaModel
-    ldamodel: Lda = Lda(corpus=doc_term, num_topics=topics, id2word=term_dict,
-                        chunksize=chunk, iterations=train_iter, passes=3,
-                        update_every=0, per_word_topics=word_topics, alpha='auto',
-                        eta=None, minimum_probability=0.01)
+    ldamodel: Lda = LdaModel(corpus=doc_term, num_topics=topics, id2word=term_dict,
+                        chunksize=chunk, iterations=train_iter, passes=4, eval_every=eval,
+                        per_word_topics=word_topics, alpha='auto')
 
     return ldamodel
 
@@ -114,14 +82,15 @@ def display_lda(model: LdaModel, ntopic: int = 5):
 
     return None
 
-def save_lda_model(ldam: LdaModel, mdl_f: str = "lda_model"):
+def save_lda_model(ldam: LdaModel, mdl_f: str = "lda_model", ldadir: str=OUTDIR):
     """
     save a gensim.models.ldamodel.LdaModel instance to a file
     :param ldam: gensim lda model
     :param mdl_f: file name to save as
+    :param ldadir: folder to save LDA models
     :return: None
     """
-    temp_file = datapath(OUTDIR + mdl_f)
+    temp_file = datapath(ldadir + mdl_f)
     ldam.save(temp_file)
 
     return None
@@ -137,18 +106,20 @@ def load_lda(fq_mdl: str = "lda_model"):
 
     return ldam
 
-def test_text_with_model(new_txt: str, ldam: LdaModel, docterm):
+def get_lda_model_topictable(ldam: LdaModel, topics: int=20):
     """
-    get vectors for new content using our pretrained model
-    :param new_txt: new tweet not part of training set
+    review lda models topics and terms, by passing them to pandas for ease of use
     :param ldam: trained LDA model
     :param docterm: gensim doc-term matrix
     :return: vectors for new content
     """
 
-    vecs = ldam.update(new_txt, update_every=0)
+    df = pd.DataFrame([[word for rank, (word, prob) in enumerate(words)]
+                  for topic_id, words in ldam.show_topics(formatted=False, num_words=6, num_topics=topics)])
 
-    return vecs
+    print(df.head())
+
+    return df
 
 def update_model_new_txt(ldam: LdaModel, wrd_tokns: list, ldadict: Dictionary):
     """
