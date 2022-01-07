@@ -12,11 +12,6 @@ NLTKDIR = '/Users/bgh/dev/NLP/nltk_data'
 W2VEC_PRE = '/Users/bgh/dev/pydev/superleague/models/freebase-vectors-skipgram1000-en.bin'
 TW2VEC_PRE = '/Users/bgh/dev/pydev/superleague/models/word2vec_twitter_tokens.bin'
 
-# test case section
-TEST_DOC = ['i', 'am', 'angel', 'this', 'wicked', 'planet', 'nobody', 'understands', 'my', 'angle',
- 'love', 'i', 'was', 'sent', 'from', 'above', 'i', 'have', 'landed', 'in', 'blood', 'psycho',
- 'bandit', 'i', 'have', 'become', 'frightful', 'damage', 'scuffed']
-
 GENRES = ['rap', 'rock', 'firstwave', 'alternative', 'metal', 'punk', 'country', 'pop', 'folkrock']
 
 rapa = ['Kendrick Lamar', 'Lil Jon', 'OutKast', '2Pac', 'TechN9ne', 'Yelawolf',
@@ -135,11 +130,13 @@ DEAD_DCT = {105519: "Workingman's Dead", 105547: "In the Dark", 105860: "Dead Se
             588045: "The Very Best of Grateful Dead", 663866: "Dave's Picks Volume 29",
             508738: "Red Rocks Amphitheatre 1978", 508706: "The Best of the Grateful Dead"
             }
-
+REM_DCT = {91073: "Fables of the Reconstruction", 559711: "Out of Time", 91154: "Monster",
+           91065: "Reckoning", 91060: "Murmur", 221701: "Eponymous", 394496: "Green",
+           91580: "Life's Rich Pageant", 81206: "Document"}
 CORESTOPS = ["a", "about", "also", "am", "among", "an", "and", "any", "are", "as",
              "at", "be", "because", "but", "by", "can", "cause", "could", "do",
              "either", "else", "ever", "for", "from", "got", "ha", "have", "his",
-             "hers", "how", "however", "if", "in", "is", "it", "just", "let",
+             "hers", "how", "however", "if", "is", "it", "just", "let",
              "like", "likely", "may", "me", "might", "must", "of", "off",
              "often", "oh", "on", "or", "should", "so", "some", "than", "that",
              "the", "their", "then", "there", "these", "they", "this", "tis",
@@ -150,7 +147,7 @@ CORESTOPS = ["a", "about", "also", "am", "among", "an", "and", "any", "are", "as
 # translate converts chars to their numeric representation, as in ord(charstr)
 QUOTEDASH_TABLE = dict([(ord(x), ord(y)) for x, y in zip(u"‘’´“”–－᠆–-", "'''''-----")])
 CHAR_CONVERSION = {
-    u"\u200B": "",  # this one's a bugger- 'zero-space' unicode char- aka invisible!
+    u"\u200B": "",  # this one's a bugger- 'zero-length space' unicode- aka invisible!
     u"\u2002": " ",
     u"\u2003": " ",
     u"\u2004": " ",
@@ -172,7 +169,7 @@ CHAR_CONVERSION = {
     u"\u201f": "'",
     u"\u2026": "'",
     "－": "-",
-    u"\u00f6": "o",         # this and next were inspired by Motley Crue
+    u"\u00f6": "o",         # this and next inspired by Motley Crue
     u"\u00fc": "u",
 }
 
@@ -217,6 +214,7 @@ GS_CONTRACT = {
     r"can't": "can not",
     r"cant": "can not",
     r"'cause": "because",
+    r"citys": "city is",
     r"could've": r"could have",
     r"couldn't": r"could not",
     r"didn't": r"did not",

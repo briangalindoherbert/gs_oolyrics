@@ -25,12 +25,11 @@ punc_tbl = str.maketrans({key: None for key in "[];:,.?!*$&@%<>'(){}"})
 re_brkttxt = re.compile(r"\[.+\]")
 lemma = WordNetLemmatizer()
 
-def get_tag_source(dtag: str, genre: str='rock', registry: list=None):
+def get_trak_lyrics(dtag: str, genre: str='rock', registry: list=None):
     """
-    given a TaggedDocument tag, get the name of the song and its lyrics, returned as a
-    dict.  Important for comparing test results to source lyrics.
-    tags = artist name (no spaces) plus 3-digit zero-filled counter (ex. '005')
-    lyrics are found by counting end-of-track markers in source file- first song is '000'
+    use tag from artist song registry to pull lyrics for a song
+    Example tag: 'Beatles000'.
+    pass the registry to return the artist-track title
     :param dtag: TaggedDocument tag, consisting of artist name + 3 digit track counter
     :param genre: need this to construct filename for artist's lyrics file
     :param registry: optional list of artist tracks dictionaries- can append song title
@@ -63,7 +62,7 @@ def get_tag_source(dtag: str, genre: str='rock', registry: list=None):
                     if eot_counter > trakint:
                         break
         if word_ct:
-            print("pulled %d words of lyrics for %s" % (word_ct, art))
+            print("  pulled %d words from %s lyrics" % (word_ct, art))
             art_trakdct['lyrics'] = trak_lines
 
     return art_trakdct
@@ -932,6 +931,7 @@ class MusicalMeg(SinginSue):
         self.calc_word_freq()
         self.calc_artist_words()
         self.calc_idf_for_words()
+        self.filter_tfidf: bool = True
         self.stream_td: bool = True
 
     def __iter__(self):
@@ -969,13 +969,17 @@ class MusicalMeg(SinginSue):
                     tmp_tok: set = set(lyrs)
                     trak_len = len(tmp_tok)
                     for wrd in lyrs:
-                        if self.idf_words.get(wrd):
-                            lookups += 1
-                            wrd_idf: float = self.idf_words[wrd]
+                        # set filter to False will significantly speed streaming!
+                        if self.filter_tfidf:
+                            if self.idf_words.get(wrd):
+                                lookups += 1
+                                wrd_idf: float = self.idf_words[wrd]
+                            else:
+                                wrd_idf: float = self.idf_mean()
+                            thistfi: float = (int(lyrs.count(wrd)) / trak_len) * wrd_idf
+                            if thistfi > tfi_cutoff:
+                                lyrics_tok.append(wrd)
                         else:
-                            wrd_idf: float = self.idf_mean()
-                        thistfi: float = (int(lyrs.count(wrd)) / trak_len) * wrd_idf
-                        if thistfi > tfi_cutoff:
                             lyrics_tok.append(wrd)
 
                     if lyrics_tok:

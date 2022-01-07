@@ -39,15 +39,13 @@ unicode_translate = str.maketrans(CHAR_CONVERSION)
 
 def get_artist_info(l_g, namestr: str = None, artid: int = None):
     """
-    establish general information about artist, either from a text search for name or
-    a provided genius artist ID.  returns info like name, id, url, number of followers,
-    number of annotations,
+    search Genius for artist- either using name (str) or genius artist ID (int)
+    returns dict such as name, id, url, followers, and annotation contributions.
     :param l_g: instantiated Genius object
     :param namestr: name of band or artist
     :param artid: if known, provide genius ID for this artist or band
     :return: artist dict with general information
     """
-
     def get_artist_by_name(artnam: str):
         """
         inner function to allow multiple tries as name search for artist can fail due to
@@ -110,10 +108,9 @@ def get_artist_info(l_g, namestr: str = None, artid: int = None):
 
 def get_artist_albums(l_g, artst, albmax: int=24):
     """
-    for a given artist, return list of albums with genius album ID, plus songID's and songURL's
-    for each track on each album.
-    if only an artist id is passed in, Fx tries to pull artist name from album info returned
-    album dict returned from this Fx is iterated through by get_lyrics to create corpus for artist
+    pass artist dict returned from get_artist_info OR: pass single artist ID
+    will find up to albmax albums, returns dict for each album with all song ID's : song URL's
+        -- structure returned is iterated by get_lyrics to build artist's lyrics file
     :param l_g: instantiated Genius object
     :param artst: this can be a Genius ID int, or the artist dict from get_artist_info
     :param albmax: maximum albums to return
@@ -130,6 +127,7 @@ def get_artist_albums(l_g, artst, albmax: int=24):
         print("get_artist_album: invalid value for artst, see docstring")
         return None
 
+    # up to 50 albums returned per page
     lg_return: dict = l_g.artist_albums(artist_id=art_id, per_page=albmax)
     album_lst: list = lg_return['albums']
     if not art_name:

@@ -19,19 +19,21 @@ datasets (lack of correlation could point to problems with my topic dataset buil
 """
 
 import pandas as pd
+from numpy import percentile, mean, median, std
 from gs_datadict import OUTDIR, GS_CONTRACT, CORESTOPS
 from gensim.corpora import Dictionary
-from gensim.models import LdaModel, LdaMulticore
+from gensim.models import LdaModel
+from gensim.models.phrases import Phrases, bigram
 from gensim.corpora import MmCorpus
 from gensim.models.ldamulticore import LdaMulticore
 from gensim.test.utils import datapath
-
 # from nltk.sentiment.vader import SentimentIntensityAnalyzer
-
 # vsi = SentimentIntensityAnalyzer()
 pd.options.plotting.backend = "plotly"
+ldatopic_table = {"*": " * ", '"': ""}
+topic_str_trans = str.maketrans(ldatopic_table)
 
-def get_gdict_and_doc2bow(docs: list):
+def get_gdict_and_doc2bow(docs: list, at_least_docs: int=30):
     """
     prepare gensim terms dictionary and document-terms matrix as intermediate step in
     topic-modeling.
@@ -39,16 +41,17 @@ def get_gdict_and_doc2bow(docs: list):
     :param docs: should send list of list of words (word tokenized corpus)
     :return: list and gsm.Dictionary with term frequencies in Tweets and corpus
     """
+
     doc_dict: Dictionary = Dictionary(docs)
 
     # Filter out words that occur less than 2 documents, or more than 30% of the documents.
-    doc_dict.filter_extremes(no_below=1, no_above=0.4)
+    doc_dict.filter_extremes(no_below=at_least_docs, no_above=0.5)
 
     doc_term_matrix: list = [doc_dict.doc2bow(doc) for doc in docs]
 
     return doc_term_matrix, doc_dict
 
-def run_lda_model(doc_term, term_dict, topics: int = 50, chunk: int = 3000, eval: int=5,
+def run_lda_model(doc_term, term_dict, topics: int = 30, chunk: int = 2000, eval: int=5,
                   train_iter: int = 100, word_topics=False):
     """
     run training cycles with doc-term matrix and docterms dictionary to create a
@@ -71,16 +74,23 @@ def run_lda_model(doc_term, term_dict, topics: int = 50, chunk: int = 3000, eval
 
     return ldamodel
 
-def display_lda(model: LdaModel, ntopic: int = 5):
+def print_lda_topics(model: LdaModel, ntopics: int=25, nwords: int=6):
     """
-    shows results of topic modeling analysis with gensim
+    shows results of Latent Dirichlet Analysis topic modeling with gensim
     :param model: instance of gsm.models.ldamodel.LdaModel
-    :param ntopic: number of topics to display
+    :param ntopics: number of topics to display
+    :param nwords: number of words per topic to display
     :return:
     """
-    print(model.print_topics(num_topics=ntopic, num_words=3))
+    ttopics: list = []
+    for i, topic in model.show_topics(formatted=True, num_topics=ntopics, num_words=nwords):
 
-    return None
+        topic = str(topic).translate(topic_str_trans)
+        ttopics.append(topic)
+        print(str(i) + ": " + topic)
+        print()
+
+    return ttopics
 
 def save_lda_model(ldam: LdaModel, mdl_f: str = "lda_model", ldadir: str=OUTDIR):
     """
@@ -106,38 +116,40 @@ def load_lda(fq_mdl: str = "lda_model"):
 
     return ldam
 
-def get_lda_model_topictable(ldam: LdaModel, topics: int=20):
+def get_lda_model_topictable(ldam: LdaModel, topics: int=20, wrds: int=8):
     """
     review lda models topics and terms, by passing them to pandas for ease of use
     :param ldam: trained LDA model
-    :param docterm: gensim doc-term matrix
+    :param topics: how many to display
+    :param wrds: how many per topic
     :return: vectors for new content
     """
-
+    pd.options.display.width = 110
+    pd.options.display.max_columns = 13
     df = pd.DataFrame([[word for rank, (word, prob) in enumerate(words)]
-                  for topic_id, words in ldam.show_topics(formatted=False, num_words=6, num_topics=topics)])
+                  for topic_id, words in ldam.show_topics(formatted=False, num_words=wrds, num_topics=topics)])
 
     print(df.head())
 
     return df
 
-def update_model_new_txt(ldam: LdaModel, wrd_tokns: list, ldadict: Dictionary):
+def update_model_new_txt(ldam: LdaModel, wrd_tokens: list, ldadict: Dictionary):
     """
-    run new content through LDA modeling
+    run new content through training with an existing model
     :param ldam: gensim.models.LdaModel
-    :param wrd_tokns: list of word tokens for new tweets
+    :param wrd_tokens: list of word tokens for new tweets
     :param ldadict: Dictionary of type gensim.corpora.Dictionary
     :return:
     """
-    if isinstance(wrd_tokns, list):
-        if isinstance(wrd_tokns[0], list):
+    if isinstance(wrd_tokens, list):
+        if isinstance(wrd_tokens[0], list):
             # each tweet is a list of strings within the larger list
-            if isinstance(wrd_tokns[0][0], str):
-                for twt in wrd_tokns:
+            if isinstance(wrd_tokens[0][0], str):
+                for twt in wrd_tokens:
                     new_corpus = [ldadict.doc2bow(wrd) for wrd in twt]
-        elif isinstance(wrd_tokns[0], str):
+        elif isinstance(wrd_tokens[0], str):
             # each list element is text of tweet, need to word tokenize...
-            for twt in wrd_tokns:
+            for twt in wrd_tokens:
                 tmp_tok: list = str(twt).split()
                 new_corpus = [ldadict.doc2bow(wrd) for wrd in tmp_tok]
 
@@ -179,3 +191,49 @@ def get_top_terms(lda: LdaModel, dDict: Dictionary, tpcs: int = 5, tpc_trms: int
             print("%s has probability %.3f" % (tmpDict[twrd], val))
 
     return None
+
+def create_phrase_model(sents, min_occurs: int=10, delim: str="-"):
+    """
+    use gensim phrases to identify top bigrams in corpus
+    :param sents: list of word-tokenized lyrics
+    """
+    phrase_mdl = Phrases(sents, min_count=min_occurs, delimiter=delim)
+
+    return phrase_mdl
+
+def test_phrase_model(test_lyrs, phrase_mdl: Phrases):
+    """
+    run a test set against an existing phrase model
+    :param test_lyrs: word-tokenized lyrics
+    :param phrase_mdl: a gensim Phrases model
+    """
+    found_phrases: dict = {}
+    for phrase, score in phrase_mdl.find_phrases(test_lyrs).items():
+        found_phrases[phrase] = score
+        print(phrase, score)
+
+    for sent in phrase_mdl[test_lyrs]:
+        pass
+
+    return found_phrases
+
+def add_to_phrases(sents, p_mdl):
+    """
+    apply new unseen sentences to existing phrase model
+    :param sents: lists of word-tokenized lists
+    return: updated p_mdl
+    """
+    p_mdl.add_vocab(sents)
+
+    return p_mdl
+
+def get_phrase_stats(pmodel: Phrases):
+    """
+    export phrases and then run mean, median and std on phrase scores
+    sort a dictionary of phrases and values by descending value
+    :param pmodel: instance of a gensim Phrases model
+    """
+    phdict: dict = pmodel.export_phrases()
+    statsdct: dict = {'mean': mean(list(pmodel.values()))}
+
+    return

@@ -2,26 +2,31 @@
 """
 gsLyrics is the main script to build lyrics corpora and apply vector models to them
 """
+import nltk.data
 import numpy as np
-from gs_datadict import LYRICDIR, OUTDIR, NLTKDIR, ARTISTDIR, GENRES, CHAR_CONVERSION, \
-    QUOTEDASH_TABLE, RAP_SENTENCES, FIRSTW_SENTENCES, COUNTRY_SENTENCES, CHRISTMAS_SENTENCES
-from gs_datadict import rapa, firstwavea, alternativea, countrya
-from gs_utils import filter_for_end_of_track, append_genre_registry, save_artist_info, \
-    retrieve_genre_registry, get_artists_in_genre, do_cloud, compare_artist_tfidf, \
-    check_outliers, plot_artist_tfidf, plot_artist_tf
-from gs_genius_wrappers import load_art_lyrics, get_artist_info, get_artist_albums, get_lyrics
-from topic_modeling import get_gdict_and_doc2bow, run_lda_model
-from gsGenSim import do_skip_gram, document_skipgram, get_tag_source, line_cleanup, \
-    test_sentence_doc2vec, TaggerTed, SinginSue, MusicalMeg
-from gs_genre_class import Genre_Aggregator
 from gensim.models.doc2vec import TaggedDocument
 from lyricsgenius import Genius
-import nltk.data
+
+from gs_datadict import LYRICDIR, OUTDIR, NLTKDIR, ARTISTDIR, CHAR_CONVERSION,\
+    QUOTEDASH_TABLE, RAP_SENTENCES, FIRSTW_SENTENCES, COUNTRY_SENTENCES, CHRISTMAS_SENTENCES
+from gs_genius_wrappers import load_art_lyrics, get_artist_info, get_artist_albums, get_lyrics
+from gs_genre_class import Genre_Aggregator
+from gs_utils import filter_for_end_of_track, append_genre_registry, save_artist_info,\
+    retrieve_genre_registry, get_artists_in_genre, do_cloud, check_outliers, plot_artist_tfidf, plot_artist_tf
+from gsGenSim import do_skip_gram, document_skipgram, get_trak_lyrics, line_cleanup,\
+    test_sentence_doc2vec, TaggerTed, MusicalMeg
+from topic_modeling import get_gdict_and_doc2bow, run_lda_model, get_top_terms, \
+    get_lda_model_topictable, print_lda_topics
 
 nltk.data.path.append(NLTKDIR)
+
+# boolean gate control is spread thin - need better appraoch to control what is run
 build_corpus: bool = False
-prep_objects: bool = True
-prep_objects2: bool = False
+
+registry_instances: bool = True
+create_lyrics_objects: bool = False
+plot_tfidf: bool = False
+get_in_memory_streams: bool = False
 
 doc_models: bool = False
 doc_testcases: bool = False
@@ -30,15 +35,16 @@ word_model: bool = False
 phrases_train_test: bool = False
 phrases_test2: bool = False
 demo_word_model: bool = False
-prep_cloud_data: bool = False
+do_wordcloud: bool = False
 
 lda_model: bool = False
-lda_testcases: bool = False
+lda_rap: bool = False
+lda_country: bool = False
 fasttext_model: bool = False
 
 # useful app vars: list of all artists in each genre in corpus, string clean conversion table
 genre_artists = get_artists_in_genre(incl_genres='all')
-char_strip_table = str.maketrans({" ": None, "/": "-", ".": "", "'": "", "–":"-"})
+char_strip_table = str.maketrans({" ": None, "/": "-", ".": "", "'": "", "–": "-"})
 unicode_translate = str.maketrans(CHAR_CONVERSION)
 
 if build_corpus:
@@ -71,7 +77,7 @@ if build_corpus:
             print("    added %s to corpus" % art_dct['name'])
     print("    -- DONE adding to corpus --\n")
 
-if prep_objects:
+if registry_instances:
     """
     I have built multiple methods and objects to navigate lyrics files and provide them
     for unsupervised training. most allow specifying a genre or genres to include:
@@ -83,123 +89,96 @@ if prep_objects:
             + optimal, clean approach leverages python strengths, 
             + versatile OO repository for genre, artist, Vocabulary, BoW information
         4. I defined 7 genres, they are country, metal, punk, rap, rock, firstwave, alternative.
-        
-    after upgrading my python 3.9.7 environment, incl. upgrade of scipy, no gensim errors
-    had been getting AttributeError no keyed vector for 'lockf' with Word2Vec
-    """
-    print("\n  ------ PREP LYRICS OBJECTS: instantiate lyrics object for streaming ------")
 
-    print("\n      --GETTING TRACK REGISTRIES BY GENRE--\n")
-    # genre registry provides tags matching artist tracks
+    """
+    print("\n      -- getting TRACK REGISTRIES for GENRES--\n")
+    print("    registry provides sequential tags for artist tracks in lyr file")
+    rap_trax = retrieve_genre_registry(genre='rap', indir=ARTISTDIR)
     firstwav_trax = retrieve_genre_registry(genre='firstwave', indir=ARTISTDIR)
     country_trax = retrieve_genre_registry(genre='country', indir=ARTISTDIR)
-    # metal_trax = retrieve_genre_registry(genre='metal', indir=ARTISTDIR)
-    rap_trax = retrieve_genre_registry(genre='rap', indir=ARTISTDIR)
-
-    print("\n    creating genre base objects")
     alt_trax = retrieve_genre_registry(genre='alternative', indir=ARTISTDIR)
+
+if create_lyrics_objects:
+    print("\n    -- creating genre base objects --")
+    print("      Genre_Aggregator instances link reference data for a music genre \n")
     rap_core = Genre_Aggregator(gen='rap')
+    firstw_core = Genre_Aggregator(gen='firstwave')
     country_core = Genre_Aggregator(gen='country')
     alt_core = Genre_Aggregator(gen='alternative')
-    firstw_core = Genre_Aggregator(gen='firstwave')
 
-    print("\n creating instances of lyrics objects")
-    tt_alt = TaggerTed(gen='alternative', lydir=LYRICDIR, artlst=rapa, treg=alt_trax)
-    mm_alt = MusicalMeg(ga_obj=alt_core)
-    mm_alt.calc_tfidf_by_trak()
-    mm_alt.calc_tfidf_by_artist()
-
-    alt_artists: list = []
-    # get artist from alt_core.artist_list attribute
-
-    plot_artist_tf(lobj=mm_alt, artst=alt_core.artist_list[8])
-    plot_artist_tfidf(lobj=mm_alt, artst=alt_core.artist_list[8])
-
+    print("\n    -- creating instances of MusicalMeg lyrics objects --")
     mm_rap = MusicalMeg(ga_obj=rap_core)
     mm_rap.calc_tfidf_by_trak()
     mm_rap.calc_tfidf_by_artist()
 
-if prep_objects2:
-    mm_country = MusicalMeg(ga_obj=country_core)
-    mm_country.calc_tfidf_by_trak()
-    mm_country.calc_tfidf_by_artist()
-    arts, artvals = check_outliers(mm_country)
-
-    plot_artist_tfidf(lobj=mm_country, artst=mm_country.artists[5])
-    plot_artist_tf(lobj=mm_country, artst=mm_country.artists[5])
-
     mm_firstw = MusicalMeg(ga_obj=firstw_core)
     mm_firstw.calc_tfidf_by_trak()
     mm_firstw.calc_tfidf_by_artist()
-    arts, artvals = check_outliers(mm_firstw)
 
-    firstw_artists: list = []
-    for x in range(len(mm_firstw.artists)):
-        firstw_artists.append(mm_firstw.artists[x])
+    mm_country = MusicalMeg(ga_obj=country_core)
+    mm_country.calc_tfidf_by_trak()
+    mm_country.calc_tfidf_by_artist()
 
-    plot_artist_tfidf(lobj=mm_firstw, artst=firstw_artists[16])
-    plot_artist_tfidf(lobj=mm_firstw, artst=firstw_artists[6])
-    plot_artist_tfidf(lobj=mm_firstw, artst=firstw_artists[1])
+    mm_alt = MusicalMeg(ga_obj=alt_core)
+    mm_alt.calc_tfidf_by_trak()
+    mm_alt.calc_tfidf_by_artist()
 
-    # prior to the histogram plots of tfidf, good to remove outliers as below!
-    arts, artvals = check_outliers(mm_rap)
+    if plot_tfidf:
+        print("    -- removing outliers and plotting tfidf for artists --")
+        arts, artvals = check_outliers(mm_rap)
+        for x in range(len(mm_rap.artists)):
+            # plot_artist_tf(lobj=mm_rap, artst=mm_rap.artists[x])
+            plot_artist_tfidf(lobj=mm_rap, artst=mm_rap.artists[x])
 
-    rap_artist_list: list = []
-    for x in range(len(mm_rap.artists)):
-        rap_artist_list.append(mm_rap.artists[x])
-    plot_artist_tfidf(lobj=mm_rap, artst=rap_artist_list[3])
+        arts, artvals = check_outliers(mm_firstw)
+        plot_artist_tf(lobj=mm_firstw, artst=firstw_core.artist_list[8])
+        plot_artist_tfidf(lobj=mm_firstw, artst=firstw_core.artist_list[8])
+        plot_artist_tfidf(lobj=mm_firstw, artst=firstw_core.artist_list[6])
+        plot_artist_tfidf(lobj=mm_firstw, artst=firstw_core.artist_list[1])
 
-    country_artists: list = []
-    for x in range(len(mm_country.artists)):
-        country_artists.append(mm_country.artists[x])
+        arts, artvals = check_outliers(mm_alt)
+        plot_artist_tfidf(lobj=mm_alt, artst=alt_core.artist_list[8])
 
-    plot_artist_tf(lobj=mm_country, artst=country_artists[2])
-    plot_artist_tfidf(lobj=mm_country, artst=country_artists[2])
+        arts, artvals = check_outliers(mm_country)
+        plot_artist_tfidf(lobj=mm_country, artst=mm_country.artists[5])
 
-    # tip to flatten list: flat_list = [item for sublist in t for item in sublist]
-    trak_lyr = dict(get_tag_source(dtag='GarthBrooks014', genre='country'))['lyrics']
-    trak_lyr = [wrd for subl in trak_lyr for wrd in subl]
+    if get_in_memory_streams:
+        # flatten lyrics for single track = [item for sublist in t for item in sublist]
+        trak_lyr = dict(get_trak_lyrics(dtag='GarthBrooks014', genre='country'))['lyrics']
+        trak_lyr = [wrd for subl in trak_lyr for wrd in subl]
 
-    """
-    plot_artist_tf(lobj=mm_rap, artst=rap_artist_list[0])
-    plot_artist_tfidf(lobj=mm_rap, artst=rap_artist_list[0])
-
-    tt_rap = TaggerTed(gen='rap', lydir=LYRICDIR, artlst=rapa, treg=rap_trax)
-    tt_rap.calc_word_freq()
-    tt_country = TaggerTed(gen='country', lydir=LYRICDIR, treg=None, artlst=countrya)
-    ss_rap = SinginSue(gen='rap', lydir=LYRICDIR, artlst=rapa, treg=rap_trax)
-    ss_rap.artist_tfidf_by_trak()
-    ss_rap.create_artist_final_tfidf()
-    ss_rap.create_bow()
-
-    train_corpus: list = []
-    test_corpus: list = []
-    for i, td in zip(range(5200), mm_rap):
-        if (i % 5) != 0:
-            train_corpus.append(td)
-    mm_rap.stream_td = False
-    for i, td in zip(range(5200), mm_rap):
-        if (i % 5) == 0:
-            test_corpus.append(td)
-    mm_rap.stream_td = True
-    """
+        """
+        to stream word-token list NOT TaggedDocument - set <inst>.stream_td = False
+        
+        plot_artist_tf(lobj=mm_rap, artst=rap_artist_list[0])
+        plot_artist_tfidf(lobj=mm_rap, artst=rap_artist_list[0])
+    
+        train_corpus: list = []
+        test_corpus: list = []
+        for i, td in zip(range(5200), mm_rap):
+            if (i % 5) != 0:
+                train_corpus.append(td)
+        mm_rap.stream_td = False
+        for i, td in zip(range(5200), mm_rap):
+            if (i % 5) == 0:
+                test_corpus.append(td)
+        mm_rap.stream_td = True
+        """
 
 if doc_models:
     print("  --starting topic modeling for music tracks by artists--")
 
     # doc_firstw = document_skipgram(tt_firstw, passes=12, grpsize=10, dim=100, thrds=4, dm=0)
-    doc_model = document_skipgram(mm_rap, passes=12, grpsize=12, dim=100, thrds=4, dm=0)
+    d2v_firstw = document_skipgram(mm_firstw, passes=12, grpsize=12, dim=100, thrds=4, dm=0)
     # additional training
-    doc_model.train(corpus_iterable=mm_rap, total_examples=doc_model.corpus_count,
+    d2v_firstw.train(corpus_iterable=mm_firstw, total_examples=d2v_firstw.corpus_count,
                        epochs=4, start_alpha=0.004, end_alpha=0.002)
 
-    filter_model = document_skipgram(mm_rap, passes=12, grpsize=10, dim=100, thrds=4, dm=0)
-    filter_model.train(corpus_iterable=mm_rap, total_examples=filter_model.corpus_count,
+    d2v_rap = document_skipgram(mm_rap, passes=12, grpsize=10, dim=100, thrds=4, dm=0)
+    d2v_rap.train(corpus_iterable=mm_rap, total_examples=d2v_rap.corpus_count,
                        epochs=6, start_alpha=0.004, end_alpha=0.001)
 
-    # this adds the lyrstream- TaggedDocs with name of each track in corpus
-    # create TaggedDocument feed with artist-track-name plus sequential artist-tag
-    td_tag_stream: list = []
+    # lyrstream is list of list of TaggedDocs: artist-title for each track in corpus
     lyrstream: list = []
     for art in rap_trax:
         wrdct: int = 0
@@ -213,11 +192,10 @@ if doc_models:
             tmptok.append(tmpv)
             tag_toks.append(tmptok)
             art_td.append(TaggedDocument(words=tmptok, tags=[k]))
-        td_tag_stream.append(tag_toks)
         lyrstream.append(art_td)
 
     for art_td in lyrstream:
-        doc_model.train(corpus_iterable=art_td, total_examples=doc_model.corpus_count,
+        d2v_rap.train(corpus_iterable=art_td, total_examples=d2v_rap.corpus_count,
                         epochs=5, start_alpha=0.003, end_alpha=0.001)
 
     kl_lyrs = [TaggedDocument(wrds, [tags]) for wrds, tags in
@@ -229,53 +207,59 @@ if doc_models:
     lilj_lyrs = [TaggedDocument(wrds, [tags]) for wrds, tags in
                load_art_lyrics(prefix='rap', artst='Lil Jon', artreg=rap_trax[5])]
 
-    filter_model.train(corpus_iterable=kl_lyrs, total_examples=filter_model.corpus_count,
+    d2v_rap.train(corpus_iterable=kl_lyrs, total_examples=d2v_rap.corpus_count,
                     epochs=8, start_alpha=0.02, end_alpha=0.002)
 
     # create models for other genres, can also split stream by train and test
     train_country: list = []
+    mm_country.stream_td = False
     for i, td in zip(range(5200), mm_country):
         if (i % 20) != 0:
-            train_country.append(td)
+            train_country.append(td[0])
 
-    mm_country.stream_td = False
     test_country: list = []
+    test_country_tgs: list = []
     for i, td in zip(range(5200), mm_country):
         if (i % 20) == 0:
-            test_country.append(td)
+            test_country.append(td[0])
+            test_country_tgs.append(td[1])
     mm_country.stream_td = True
 
-    country_model = document_skipgram(train_country, passes=12, grpsize=10, dim=100, thrds=4, dm=0)
-    country_model.train(corpus_iterable=train_country, total_examples=country_model.corpus_count,
+    d2v_country = document_skipgram(mm_country, passes=12, grpsize=10, dim=100, thrds=4, dm=0)
+    d2v_country.train(corpus_iterable=train_country, total_examples=d2v_country.corpus_count,
                        epochs=8, start_alpha=0.02, end_alpha=0.002)
 
     print("\n    sentence tests for doc model - country genre")
     for x, line in enumerate(test_country[:17]):
-        test_sentence_doc2vec(sentence=line, d2v=country_model, topsiz=10)
+        test_sentence_doc2vec(sentence=line, d2v=d2v_country, topsiz=10)
 
     for x, line in enumerate(test_country[13:18]):
-        test_sentence_doc2vec(sentence=line, d2v=country_model, topsiz=10)
+        test_sentence_doc2vec(sentence=line, d2v=d2v_country, topsiz=10)
 
 if doc_testcases:
     print("  -- Demonstrating Doc2Vec Model --")
 
+    print("\n    Now test joe jackson, violent femmes on firstwave docmodel")
+    for x, line in enumerate(FIRSTW_SENTENCES):
+        test_sentence_doc2vec(sentence=line, d2v=d2v_firstw, topsiz=10)
+
     # get dict of all words used in model, along with their internal index
-    doc_entity = doc_model.dv.key_to_index
+    doc_entity = d2v_rap.dv.key_to_index
     # to get a random document ID use:
-    random_doc_id = np.random.randint(low=0, high=len(doc_model.dv))
+    random_doc_id = np.random.randint(low=0, high=len(d2v_rap.dv))
     print("got random doc id:")
     print(random_doc_id)
-    print(doc_model.dv.index_to_key[random_doc_id])
+    print(d2v_rap.dv.index_to_key[random_doc_id])
     print("    -- the above can then be used to pull vectors and lyrics --")
 
-    normed_vector = doc_model.dv.get_vector("KendrickLamar005", norm=True)
-    doc_vector = doc_model.dv["KendrickLamar005"]
-    doc_vectors = doc_model.dv.vectors
+    normed_vector = d2v_rap.dv.get_vector("KendrickLamar005", norm=True)
+    doc_vector = d2v_rap.dv["KendrickLamar005"]
+    doc_vectors = d2v_rap.dv.vectors
 
     ranks = []
     second_ranks = []
-    inferred_vector = doc_model.infer_vector(get_tag_source(dtag='KendrickLamar152', genre='rap'))
-    sims = doc_model.dv.most_similar([inferred_vector], topn=20)
+    inferred_vector = d2v_rap.infer_vector(get_trak_lyrics(dtag='KendrickLamar152', genre='rap'))
+    sims = d2v_rap.dv.most_similar([inferred_vector], topn=20)
     rank = [docid for docid, sim in sims].index('KendrickLamar152')
     ranks.append(rank)
     second_ranks.append(sims[1])
@@ -286,49 +270,44 @@ if doc_testcases:
     ranks = []
     second_ranks = []
     for doc_id in range(10):
-        inferred_vector = doc_model.infer_vector(train_corpus[doc_id].words)
-        sims = doc_model.dv.most_similar([inferred_vector], topn=len(doc_model.dv))
+        inferred_vector = d2v_rap.infer_vector(train_corpus[doc_id].words)
+        sims = d2v_rap.dv.most_similar([inferred_vector], topn=len(d2v_rap.dv))
 
         rank = [docid for docid, sim in sims].index(doc_id)
         ranks.append(rank)
         second_ranks.append(sims[1])
 
-    # comparing random lyrics in genre to model for similarity
-    # rap_sentences are from Yelawolf, Kendrick Lamar, and TechN9ne
-    print("\n    sentence tests for taggerted doc model - rap genre")
-    print(" lyrics excerpted from Yelawolf, Kendrick Lamar, TechN9ne, LilJon, OutKast")
+    # comparing previously unseen lyrics with trained lyrics models
+    print("\n    testing document models with previously unseen lyrics")
+    print("  lyrics excerpted from Yelawolf, Kendrick Lamar, TechN9ne, LilJon, OutKast")
     for x, line in enumerate(RAP_SENTENCES):
-        test_sentence_doc2vec(sentence=line, d2v=doc_model, topsiz=10)
+        test_sentence_doc2vec(sentence=line, d2v=d2v_rap, topsiz=10)
 
-    print("\n    Now test singinsue doc model - rap genre on same sentences")
-    for x, line in enumerate(RAP_SENTENCES):
-        test_sentence_doc2vec(sentence=line, d2v=filter_model, topsiz=10)
-
-    print("\n    Now test TaggerTed doc model - rap genre on Country music sentences")
+    print("\n    Now test rap doc model with Country music sentences")
     for x, line in enumerate(COUNTRY_SENTENCES):
-        test_sentence_doc2vec(sentence=line, d2v=doc_model, topsiz=10)
+        test_sentence_doc2vec(sentence=line, d2v=d2v_rap, topsiz=10)
 
-    print("\n    And test TaggerTed doc model - rap genre on Christmas carol lyrics!")
+    print("\n    Testing rap genre model with Christmas carol lyrics")
     for x, line in enumerate(CHRISTMAS_SENTENCES):
-        test_sentence_doc2vec(sentence=line, d2v=doc_model, topsiz=10)
+        test_sentence_doc2vec(sentence=line, d2v=d2v_rap, topsiz=10)
 
     print("\n    sentence tests for doc model - firstwave genre")
     for x, line in enumerate(FIRSTW_SENTENCES):
-        test_sentence_doc2vec(sentence=line, d2v=doc_model, topsiz=10)
+        test_sentence_doc2vec(sentence=line, d2v=d2v_firstw, topsiz=10)
 
     if doc_extended_tests:
-        print("    size of word vocabulary in doc model is %d\n" % len(doc_model.wv))
+        print("    size of vocabulary in rap genre doc model is %d\n" % len(d2v_rap.wv))
         print("    -- test for word in doc model vocabulary --")
 
         testword = "compton"
-        if testword in doc_model.wv.key_to_index:
-            print(f"Word {testword} appeared {doc_model.wv.get_vecattr(testword, 'count')} times")
+        if testword in d2v_rap.wv.key_to_index:
+            print(f"Word {testword} appeared {d2v_rap.wv.get_vecattr(testword, 'count')} times")
         else:
             print("    testword: %s NOT in vocabulary" % testword)
 
-        doc_model.wv.most_similar(positive=['adidas', 'compton'], negative=['city'], topn=5)
+        d2v_rap.wv.most_similar(positive=['adidas', 'compton'], negative=['city'], topn=5)
 
-if prep_cloud_data:
+if do_wordcloud:
     # create stream for artist-track titles with tags, then artist lyrics too:
     # create TaggedDocument feed with artist-track-name plus sequential artist-tag
     titles_stream: list = []
@@ -346,26 +325,28 @@ if prep_cloud_data:
 
     # create data from one or more artists for a wordcloud
     # can use the genre registries to identify ID of individual songs for an artist
-    u2_lyrs = [wrds for wrds, tags in load_art_lyrics(prefix='alternative', artst='U2',
-                                                      artreg=alt_trax[9])]
+    u2_lyrs = [wrds for wrds, tags in load_art_lyrics(prefix='alternative', artst='U2', artreg=alt_trax[9])]
     # example- created specialized list for wordcloud:
     u2_stops = ['know', 'time', 'need', 'yeah']
     # u2_tmp = u2_lyrs[106:110]  etc. - append and extend from here
+    do_cloud(cloud_words=u2_lyrs, opt_stops=u2_stops, maxwrd=110)
 
-    do_cloud(batch_tw_wrds=u2_lyrs, opt_stops=u2_stops, maxwrd=110)
+    greenday_lyrs = [wrds for wrds, tags in load_art_lyrics(prefix='alternative', artst='GreenDay',
+                                                      artreg=alt_trax[4])]
+
+    do_cloud(cloud_words=greenday_lyrs, opt_stops=u2_stops, maxwrd=110)
 
     alt_stops: list = ['fuck', 'bitch', 'shit', 'lord', 'five', 'know', 'thought', 'well',
                        'yeah', 'doodoo', 'doodoodoo']
     pearljam_lyrs = [wrds for wrds, tags in load_art_lyrics(prefix='alternative',
                                                             artst='PearlJam', artreg=alt_trax[6])]
-    do_cloud(batch_tw_wrds=pearljam_lyrs, opt_stops=alt_stops, maxwrd=120)
+    do_cloud(cloud_words=pearljam_lyrs, opt_stops=alt_stops, maxwrd=120)
 
     rhcp_lyrs = [wrds for wrds, tags in
                load_art_lyrics(prefix='alternative', artst='RedHotChiliPeppers', artreg=alt_trax[5])]
-    do_cloud(batch_tw_wrds=rhcp_lyrs, opt_stops=alt_stops, maxwrd=120)
+    do_cloud(cloud_words=rhcp_lyrs, opt_stops=alt_stops, maxwrd=120)
 
-    kl_lyrs = [wrds for wrds, tags in
-                 load_art_lyrics(prefix='rap', artst='LilJon', artreg=rap_trax[5])]
+    kl_lyrs = [wrds for wrds, tags in load_art_lyrics(prefix='rap', artst='LilJon', artreg=rap_trax[5])]
 
     lilj_lyrs = [wrds for wrds, tags in
                load_art_lyrics(prefix='rap', artst='LilJon', artreg=rap_trax[5])]
@@ -373,47 +354,31 @@ if prep_cloud_data:
 
     # to get lyrics for a track, look for track name in registry, then get_tag_source
     print(rap_trax)
-    get_tag_source(dtag='KendrickLamar152', genre='rap')
-
+    get_trak_lyrics(dtag='KendrickLamar152', genre='rap')
 
     # do_cloud in gs_utils can receive one or more word-tokenized lists and a stop list
     rap_cloud_stops = ['nigga', 'fuck', 'fucking', 'bitch', 'pussy', 'hoes']
-    do_cloud(batch_tw_wrds=lilj_lyrs, stops=rap_cloud_stops, maxwrd=120)
+    do_cloud(cloud_words=lilj_lyrs, opt_stops=rap_cloud_stops, maxwrd=120)
 
 if word_model:
-    """
-    this section does unsupervised training with gensim Word2Vec,
-    I plan to extend this section to also train doc2vec and phrase2vec
-    """
-    print("  --doing unsupervised training for word embeddings--")
+    print("  -- start unsupervised training of vectors for word embeddings --")
 
     """
-     don't need these in-memory approaches now, generator class is better...
-     fwlyrlist = load_lyrics(LYRICDIR, prefix="firstwave", sep_artists=True)
+     lyrics_fw = load_lyrics(LYRICDIR, prefix="firstwave", sep_artists=True)
      lyrlist = load_tag_docs("rap_KendrickLamar.lyr")
 
      LL_rap = LyricalLou(gen_prefx='rap', folder=LYRICDIR)
      LL_rap.create_bow()
      LL_1stwav = LyricalLou(gen_prefx='firstwave')
      LL_1stwav.create_bow()
-     LL_rock = LyricalLou(gen_prefx='rock')
-     LL_rock.create_bow()
      LL_country = LyricalLou(gen_prefx='country')
      LL_country.create_bow()
-     LL_alt = LyricalLou(gen_prefx='alternative')
-     LL_alt.create_bow()
-     LL_punk = LyricalLou(gen_prefx='punk')
-     LL_punk.create_bow()
-     LL_metal = LyricalLou(gen_prefx='metal')
-     LL_metal.create_bow()  
-
      LL_all = LyricalLou(gen_prefx='all')
      LL_all.create_bow()
-
      """
-    mm_rap = TaggerTed(gen='rap', lydir=LYRICDIR)
-    # rapmdl = do_skip_gram(iterlyr=LL_rap, dim=200, thrds=4, passes=6, grpsz=8, maxv=42000)
-    fullmdl = do_skip_gram(iterlyr=mm_rap, dim=200, thrds=4, passes=6, grpsz=8, maxv=42000)
+    tt_rap = TaggerTed(gen='rap', lydir=LYRICDIR, artlst=rap_core.artist_list, treg=rap_trax)
+    w2v_rap = do_skip_gram(iterlyr=tt_rap, dim=200, thrds=4, passes=6, grpsz=8, maxv=42000)
+    # w2v_rap = do_skip_gram(iterlyr=mm_rap, dim=200, thrds=4, passes=6, grpsz=8, maxv=42000)
 
     if demo_word_model:
         """
@@ -425,31 +390,31 @@ if word_model:
         from sklearn.decomposition import PCA
         print("\n---- vector model demonstration section ----")
 
-        if fullmdl:
-            fullmdl.predict_output_word(context_words_list=["homies", "friends",
+        if w2v_rap:
+            w2v_rap.predict_output_word(context_words_list=["homies", "friends",
                                                             "rollin", "dirty"], topn=5)
-            X = fullmdl[fullmdl.wv.vocab]
+            X = w2v_rap[w2v_rap.wv.vocab]
             pca = PCA(n_components=2)
             result = pca.fit_transform(X)
             # convert from matplot bullshit: result[:, 0], result[:, 1]
-            words = list(fullmdl.wv.vocab)
+            words = list(w2v_rap.wv.vocab)
             pca_dct: dict = {}
             for i, word in enumerate(words):
                 pca_dct[word] = xy=(result[i, 0], result[i, 1])
 
-            result = fullmdl.most_similar(positive=['woman', 'king'], negative=['man'], topn=1)
+            result = w2v_rap.most_similar(positive=['woman', 'king'], negative=['man'], topn=1)
             print("classic nlp analogy: man is to woman as king is to: %s" % result)
 
             more_examples = ["he his she", "big bigger bad"]
             for example in more_examples:
                 a, b, x = example.split()
-                predicted = fullmdl.most_similar([x, b], [a])[0][0]
+                predicted = w2v_rap.most_similar([x, b], [a])[0][0]
                 print("%s is to %s as %s is to %s" % (a, b, x, predicted))
 
             mismatched: list = ["breakfast", "cereal", "dinner", "lunch"]
-            fullmdl.doesnt_match(mismatched)
+            w2v_rap.doesnt_match(mismatched)
 
-            fullmdl.wv.most_similar("music")
+            w2v_rap.wv.most_similar("music")
 
             analogies: list = [
                 {'positive': ['enemies', 'love'], 'negative': ['friends']},
@@ -460,19 +425,23 @@ if word_model:
                 if isinstance(example, dict):
                     pos: list = example.get('positive')
                     neg: list = example.get('negative')
-                    print(fullmdl.wv.most_similar(positive=pos, negative=neg, topn=3))
+                    print(w2v_rap.wv.most_similar(positive=pos, negative=neg, topn=3))
 
         # k-means clustering to see how word and phrase vectors group
 
 if phrases_train_test:
-
-    common_wrds: dict = {}
+    print("   -- Analyzing Artist Word Use and Modeling Phrases in Corpus --")
+    # lets get unique language use by artists as well as phrases
+    # first, lets find words which are used by less than half the genre's artists
+    # rap genre has 51,072 words and 16 artists, self.word_artists tells how many use word
+    rare_words: dict = {}
+    artist_ct: int = len(mm_rap.artists)
+    rare_ct = round(artist_ct * 0.4, ndigits=0)
     for wrd, ct in mm_rap.word_artists.items():
-        if ct < 5:
-            common_wrds[wrd] = 1
-
-    print("   -- Creating and Testing phrases modeling in gensim --")
-    from gensim.models.phrases import Phrases
+        if ct <= rare_ct:
+            if mm_rap.word_freq.get(wrd):
+                if mm_rap.word_freq.get(wrd) > 5:
+                    rare_words[wrd] = mm_rap.word_freq.get(wrd)
 
     train_phrase_corp: list = []
     test_phrase_corp: list = []
@@ -487,30 +456,25 @@ if phrases_train_test:
             test_tagsource.append(td[1])
     mm_country.stream_td = True
 
-    phrase_mdl = Phrases(train_phrase_corp, min_count=4, delimiter="-")
-    country_phrases: dict = {}
-    for phrase, score in phrase_mdl.find_phrases(test_phrase_corp).items():
-        country_phrases[phrase] = score
-        print(phrase, score)
 
 if phrases_test2:
-    train_phrase_rap: list = []
-    test_phrase_rap: list = []
-    test_tagsource_rap: list = []
-    mm_rap.stream_td = False
-    for i, td in zip(range(3200), mm_rap):
+    train_phrase: list = []
+    test_phrase: list = []
+    test_tagsource: list = []
+    mm_firstw.stream_td = False
+    for i, td in zip(range(len(mm_firstw.words_trak)), mm_firstw):
         if (i % 5) != 0:
-            train_phrase_rap.append(td[0])
-    for i, td in zip(range(3200), mm_rap):
+            train_phrase.append(td[0])
+    for i, td in zip(range(len(mm_firstw.words_trak)), mm_firstw):
         if (i % 5) == 0:
-            test_phrase_rap.append(td[0])
-            test_tagsource_rap.append(td[1])
-    mm_rap.stream_td = True
+            test_phrase.append(td[0])
+            test_tagsource.append(td[1])
+    mm_firstw.stream_td = True
 
-    rap_phrase_mdl = Phrases(train_phrase_rap, min_count=4, delimiter="-")
-    rap_phrases: dict = {}
-    for phrase, score in rap_phrase_mdl.find_phrases(test_phrase_rap).items():
-        rap_phrases[phrase] = score
+    phrase_mdl = Phrases(train_phrase, min_count=4)
+    phrases: dict = {}
+    for phrase, score in phrase_mdl.find_phrases(test_phrase).items():
+        phrases[phrase] = score
         print(phrase, score)
 
 if fasttext_model:
@@ -527,31 +491,61 @@ if fasttext_model:
     """
 
 if lda_model:
+    # LDA assumes documents are produced from a mixture of topics
+    # Topics generate words based on their probability distribution.
     print("  ---- CREATE LDA model for topic modeling ----\n")
-    # fw_sent = load_lyrics(folder=LYRICDIR, prefix='rap')
+    tot_topics = 16
+    tot_words = 6
 
-    dtmatrix, dterms = get_gdict_and_doc2bow(mm_rap)
-    dterms.filter_extremes(no_below=1, no_above=0.5, keep_n=None)
-    print("length of lda Dictionary after tfidf pruning is %d" % len(dterms))
-    lda_mdl = run_lda_model(dtmatrix, dterms, topics=20, train_iter=100, word_topics=True)
-    # lda_mdl.top_topics(texts=fw_sent)
+    train_rap: list = []
+    test_rap: list = []
+    test_tags: list = []
+    mm_rap.stream_td = False
+    for i, td in zip(range(5200), mm_rap):
+        if (i % 10) != 0:
+            tmpl: list = []
+            for wrd in td[0]:
+                if len(wrd) > 3:
+                    tmpl.append(wrd)
+            train_rap.append(tmpl)
+            # train_rap_tags.append(td[1])
+        else:
+            tmpl: list = []
+            for wrd in td[0]:
+                if len(wrd) > 3:
+                    tmpl.append(wrd)
+            test_rap.append(tmpl)
+            test_tags.append(td[1])
+    mm_rap.stream_td = True
 
-    if lda_testcases:
+    if lda_rap:
         print("  ---- DISPLAY TEST CASES FOR LDA model ----\n")
-        tot_topics = 5
-        # most relavent words which make up a topic
-        tot_words = 20
+        dtmatrix, dterms = get_gdict_and_doc2bow(train_rap, at_least_docs=80)
+        # must be in at least n docs, no more than x % of docs, and keep first y most frequent
+        print("length of lda Dictionary after pruning is %d" % len(dterms))
+        lda_mdl = run_lda_model(dtmatrix, dterms, topics=20, train_iter=100, word_topics=True)
+        lda_mdl.top_topics(corpus=dtmatrix, topn=6)
         print(lda_mdl.print_topics(num_topics=tot_topics, num_words=tot_words))
         # get topic distributions
         topic_dist = lda_mdl.state.get_lambda()
-
         # get topic terms
         for i, topic in lda_mdl.show_topics(formatted=True, num_topics=tot_topics, num_words=tot_words):
             print(str(i) + ": " + topic)
             print()
+        topics_lda = lda_mdl.show_topics(num_words=6, log=True, formatted=True)
 
-        # to show the top topic for a particular document by doc id:
-        lda_mdl[dtmatrix[0]]
+        # get difference between two lda models:
+        # mdiff, annotation = m1.diff(m2)
+        # topic_diff = mdiff  # get matrix with difference for each topic pair
+
+        # show terms by document for docs with > 10 terms for up to 50 docs
+        counter: int = 0
+        for x in range(len(dtmatrix)):
+            if len(dtmatrix[x]) > 12:
+                counter += 1
+                if counter < 50:
+                    maptopic = lda_mdl[dtmatrix[x]]
+                    print([dterms.id2token[maptopic[0][i][0]] for i in range(len(maptopic[0]))])
 
         testtok = [['he', 'brushed', 'em', 'walked', 'back', 'kentucky', 'fried', 'chicken',
                     'chicken', 'spot', 'was', 'light', 'skinned', 'nigga', 'talked', 'lot',
@@ -560,3 +554,33 @@ if lda_model:
         test_doc = other_bow[0]
         # ldamdl_upd = lda_mdl.update(other_bow)
 
+    if lda_country:
+        print("\n  -- LDA creates document-topic and topic-terms matrices for a corpus --")
+        #
+        train_country: list = []
+        test_country: list = []
+        test_country_tags: list = []
+        mm_country.stream_td = False
+        for i, td in zip(range(5200), mm_country):
+            if (i % 10) != 0:
+                tmpl: list = []
+                for wrd in td[0]:
+                    if len(wrd) > 3:
+                        tmpl.append(wrd)
+                train_country.append(tmpl)
+            else:
+                tmpl: list = []
+                for wrd in td[0]:
+                    if len(wrd) > 3:
+                        tmpl.append(wrd)
+                test_country.append(tmpl)
+                test_country_tags.append(td[1])
+        mm_country.stream_td = True
+
+        doc_term_ctry, dict_ctry = get_gdict_and_doc2bow(train_country, at_least_docs=50)
+        # must be in at least n docs, no more than x % of docs, and keep first y most frequent
+        print("length of lda Dictionary after pruning is %d" % len(dict_ctry))
+        lda_country = run_lda_model(doc_term_ctry, dict_ctry, topics=20, train_iter=100, word_topics=True)
+        lda_country.top_topics(corpus=doc_term_ctry, topn=6)
+        print(lda_country.print_topics(num_topics=tot_topics, num_words=tot_words))
+        ctry_topics = print_lda_topics(lda_country, ntopics=20)

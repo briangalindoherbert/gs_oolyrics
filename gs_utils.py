@@ -471,13 +471,12 @@ def scrub_cloud(twl: list):
     from gs_datadict import GS_STOP, STOP_LYRICS, CHAR_CONVERSION
     import re
 
-    tmpl: list = []
     for tweetxt in twl:
         if isinstance(tweetxt, str):
             # remove newlines in tweets, they cause a mess with many tasks
             tweetxt = tweetxt.replace("\n", " ")
             # remove standalone period, no need in a tweet
-            tweetxt = re.sub("\.", " ", tweetxt)
+            tweetxt = re.sub(r"\.", " ", tweetxt)
             # expand contractions using custom dict of contractions
             tweetxt = re.sub(GS_STOP, "", tweetxt)
             # convert ucs-2 chars appearing in english tweets
@@ -525,14 +524,14 @@ def get_cloud_input(batch_words):
 
     return wrdct
 
-def do_cloud(batch_tw_wrds, opt_stops: str = None, maxwrd: int = 120):
+def do_cloud(cloud_words: list, opt_stops: list = None, maxwrd: int = 120):
     """
     wordcloud package options can be explored via '?wordcloud' (python- show docstring)
     background_color="white" - lighter background makes smaller words more legible,
     max_words= this can prevent over clutter, mask=shape the cloud to an image,
     stopwords=ad-hoc removal of unwanted words, contour_width=3,
-    :param batch_tw_wrds: list of list of word tokens for tweets
-    :param opt_stops: str var name for optional stop list
+    :param cloud_words: list of list of word tokens
+    :param opt_stops: list of words (str) to remove prior to creating wordcloud
     :param maxwrd: int typically from 80 to 120 for total words to appear in cloud
     :return:
     """
@@ -541,7 +540,7 @@ def do_cloud(batch_tw_wrds, opt_stops: str = None, maxwrd: int = 120):
     import matplotlib.pyplot as plt
 
     cloud_text = io.StringIO(newline="")
-    for tok in batch_tw_wrds:
+    for tok in cloud_words:
         if isinstance(tok, str):
             cloud_text.write(tok + " ")
         else:

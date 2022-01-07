@@ -9,7 +9,7 @@ from gs_utils import retrieve_genre_registry, clean_name
 
 def clean_artlst_from_gen(genre: str):
     """
-    simple utility to pass cleaned artist names given a genre
+    returns list of clean artist names for a given genre (strip spaces, punc, extended chars)
     """
     genre_to_artists: dict = {
         'rap': rapa, 'firstwave': firstwavea, 'alternative': alternativea, 'country': countrya,
