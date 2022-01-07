@@ -1,5 +1,7 @@
 ## musiclyrics_nlp
-apply gensim vector training and LDA topic modeling to corpora of lyrics from selected musical artists
+This code repository came from a side project I started building in November 2021.  My initial scope was simply to automate the creation of a corpus of music lyrics and apply some basic nlp tasks to it, such as pulling up lyrics for a given artist or song and doing stats on word frequency and inverse document frequency.  
+    Next, I built some classes of objects to serve as virtual containers for musical genres and their associated artists, albums, tracks and track registries (unique tags for each artist song along with url for song title and lyrics).  These classes were designed with __iter__ methods which used python generators and iterators to stream the lyrics owned by an instance of the object.
+    With this framework built- the lyrics corpus creation as well as data structures to hold various artist and lyrics data - I built scripts and methods to apply the lyrics for nlp tasks.  First I extended the class definitions to do analysis, statistics, and plotting on their contents- such as creating Dictionary and Bag of Words objects for lyrics, calculating term frequency and inverse document frequency, and plotting histograms for the vocabulary of an artist or genre.  More advanced nlp included applying word2vec, doc2vec, LDA topic modeling, and phrases analysis.
 
 1. functions to interface with lyricgenius api to GET lyrics from Internet for an artist, this builds a corpus of lyrics - each lyric file is named with the prefix of the genre (ex. 'rap', 'rock', 'country', 'pop') the artist name with spaces stripped out, and extension ".lyr", as in "pop_Maroon5.lyr".
 2. In addition to building a corpus of lyrics files as described above, I've added functions to create a lyrics registry to support creating TaggedDocuments, in parralel to the lyric corpus building, it creates a json file for each genre, with list of tag: song name pairs for each artist's tracks in the corpus.  This index makes it easy to pull a song and its lyrics when doing topic modeling like looking for the most similar tracks to a line of input text.
@@ -8,10 +10,9 @@ apply gensim vector training and LDA topic modeling to corpora of lyrics from se
 5. uses gensim word2vec and Similarity for training of corpora to generate KeyedVector model.  Creating word embeddings for a genre or for the entire corpora of music lyrics allows interesting findings with similarities and differences of language use by artists, in genres, or with music in general.
 6. used gensim doc2vec to do unsupervised training, defining each song in the applicable genre as a TaggedDocument.  This allows some cool stuff with looking at similarities and characteristics of different artists, genres, and music tracks.  
 7. uses gensim.models.Ldamodel and gensim.corpora.Dictionary for LDA topic modeling
+  
+I kept expanding and enhancing the libraries and methods and classes I wrote to manage it all.  I had to do a lot of refactoring as the scope of my project 'exploded', so I simply replaced core .py files in the app in the last couple updates.  The structure is stable enough now that I can start to branch updates instead of doing wholesale code replacement.
 
-I initially built corpora of lyrics from complete 'official' album releases of The Grateful Dead and first three full-length releases from Kendrick Lamar, I planned to do some modeling to contrast language use and meaning between 'old school' rock and newer 'rap'.  But, I quickly saw I needed to build out a much larger corpus within each genre and to broaden my knowledge of and application of 'paragraph' or 'document' level vector models.  
-I kept expanding and enhancing the libraries I integrated and the methods and classes I wrote to manage it all.  As of this writing (Dec 18, 2021) I now have built pieces for vocabulary, BoW, word2vec, and doc2vec modeling, and my corpus has the lyrical body of work of 130 artists across 7 musical genre.
-
-With many big changes to the purpose and scope of this app, I've had to do a lot of refactoring but I feel there are many pieces now that have a good design and are stable.  I think there is tons of potential with nlp applied to music lyrics, and I've just scratched the surface with this.  I hope you enjoy music like I do and that you find something in this app that is useful or interesting.
+I hope you enjoy music as much as I do and find other useful ways to apply this corpus and the tools to lyrics!
 Brian
 
